@@ -1,0 +1,9 @@
+You are an expert resume writer. Optimize the following resume text based on the provided job description.
+
+Job Description:
+{job_description}
+
+Resume:
+{resume_text}
+
+Output the optimized resume content in clean, professional markdown format.

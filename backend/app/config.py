@@ -19,6 +19,11 @@ class Settings:
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
     OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "")
 
+    # Authentication & Database
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./resumeai.db")
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "super-secret-key-change-in-production")
+
     # File upload limits
     MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", 5 * 1024 * 1024))  # 5MB
     ALLOWED_EXTENSIONS: set = {"pdf", "docx"}

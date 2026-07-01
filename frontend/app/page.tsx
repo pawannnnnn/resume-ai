@@ -20,6 +20,9 @@ import {
   Menu,
   X
 } from 'lucide-react';
+import { GoogleLogin } from '@react-oauth/google';
+import { useAuth } from '../context/AuthContext';
+import { LogOut } from 'lucide-react';
 
 import DragDropUpload from '../components/DragDropUpload';
 import JobURLInput from '../components/JobURLInput';
@@ -60,6 +63,7 @@ interface Toast {
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 
 export default function Home() {
+  const { user, token, isLoading, login, logout, refreshUser } = useAuth();
   // Theme state
   const [darkMode, setDarkMode] = useState(false);
 
@@ -67,9 +71,10 @@ export default function Home() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // SaaS subscription & credit states
-  const [isPro, setIsPro] = useState(false);
-  const [credits, setCredits] = useState(1);
+  const isPro = user?.subscription_type === 'pro';
+  const credits = user ? 5 - user.optimizations_used : 0;
   const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [limitReached, setLimitReached] = useState(false);
 
   // Input states
   const [jobUrl, setJobUrl] = useState('');
@@ -120,20 +125,6 @@ export default function Home() {
       setDarkMode(true);
     }
     
-    // Read saved subscription status
-    const savedProStatus = localStorage.getItem('resume_ai_pro_user');
-    if (savedProStatus === 'true') {
-      setIsPro(true);
-    }
-    
-    // Read saved credits count
-    const savedCredits = localStorage.getItem('resume_ai_credits');
-    if (savedCredits !== null) {
-      setCredits(parseInt(savedCredits, 10));
-    } else {
-      setCredits(1);
-    }
-    
     // Read saved versions
     try {
       const savedVersions = localStorage.getItem('resume_versions');
@@ -178,7 +169,10 @@ export default function Home() {
     try {
       const res = await fetch(`${API_BASE}/api/scrape`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ url: jobUrl }),
       });
 
@@ -211,6 +205,9 @@ export default function Home() {
     try {
       const res = await fetch(`${API_BASE}/api/parse`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         body: formData,
       });
 
@@ -243,8 +240,7 @@ export default function Home() {
     }
 
     if (!isPro && credits <= 0) {
-      setIsPricingOpen(true);
-      showToast('Optimization credit limit reached. Please upgrade to Pro to optimize more resumes.', 'info');
+      setLimitReached(true);
       return;
     }
 
@@ -258,7 +254,10 @@ export default function Home() {
       setProcessPercent(40);
       const resAnalyze = await fetch(`${API_BASE}/api/analyze`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           resume_text: originalResumeText,
           job_description: jobDescription,
@@ -280,7 +279,10 @@ export default function Home() {
       setProcessPercent(70);
       const resOptimize = await fetch(`${API_BASE}/api/optimize`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           resume_text: originalResumeText,
           job_description: jobDescription,
@@ -304,7 +306,10 @@ export default function Home() {
       setProcessPercent(90);
       const resSuggest = await fetch(`${API_BASE}/api/suggestions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           resume_text: dataOptimize.optimized_resume_markdown,
           job_description: jobDescription,
@@ -325,9 +330,7 @@ export default function Home() {
       setProcessStep('Analysis complete!');
       
       if (!isPro) {
-        const nextCredits = Math.max(0, credits - 1);
-        setCredits(nextCredits);
-        localStorage.setItem('resume_ai_credits', nextCredits.toString());
+        refreshUser(); // Updates the remaining optimizations counter
       }
       
       showToast('Resume optimized successfully!', 'success');
@@ -337,12 +340,6 @@ export default function Home() {
     } finally {
       setTimeout(() => setIsProcessing(false), 800);
     }
-  };
-
-  const handleUpgrade = (planName: string) => {
-    setIsPro(true);
-    localStorage.setItem('resume_ai_pro_user', 'true');
-    showToast(`Successfully upgraded to ${planName}!`, 'success');
   };
 
   // Step 4: Export PDF/DOCX/LaTeX
@@ -362,7 +359,10 @@ export default function Home() {
     try {
       const res = await fetch(`${API_BASE}/api/export`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           markdown_text: optimizedResumeText,
           format: format,
@@ -456,6 +456,63 @@ export default function Home() {
     showToast('Version renamed.', 'success');
   };
 
+  if (isLoading) {
+    return <div className="h-screen flex items-center justify-center">Loading...</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${darkMode ? 'bg-[#0A0A0A] text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <div className={`max-w-md w-full p-8 rounded-2xl shadow-xl ${darkMode ? 'bg-[#141414] border border-white/10' : 'bg-white border border-gray-100'}`}>
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold mb-2">ResumeAI</h1>
+            <p className="opacity-70">Sign in to optimize your resume with AI.</p>
+          </div>
+          <div className="flex justify-center">
+            <GoogleLogin
+              onSuccess={credentialResponse => {
+                if (credentialResponse.credential) {
+                  login(credentialResponse.credential).catch(err => showToast('Login failed', 'error'));
+                }
+              }}
+              onError={() => {
+                showToast('Login Failed', 'error');
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (limitReached) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${darkMode ? 'bg-[#0A0A0A] text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <div className={`max-w-md w-full p-8 rounded-2xl shadow-xl text-center ${darkMode ? 'bg-[#141414] border border-white/10' : 'bg-white border border-gray-100'}`}>
+          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Lock size={32} />
+          </div>
+          <h2 className="text-2xl font-bold mb-4">Limit Reached</h2>
+          <p className="mb-6 opacity-70">You have used all 5 free resume optimizations.</p>
+          <div className="space-y-3">
+            <button 
+              className="w-full py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition"
+              onClick={() => { setLimitReached(false); setIsPricingOpen(true); }}
+            >
+              Upgrade to Pro
+            </button>
+            <button 
+              className={`w-full py-3 rounded-lg font-medium transition ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-gray-100 hover:bg-gray-200'}`}
+              onClick={() => setLimitReached(false)}
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
       
@@ -483,68 +540,37 @@ export default function Home() {
       {/* Main Grid Page Wrapper */}
       <div className="flex flex-col h-screen">
         
-        {/* Sleek Top Header Navigation */}
-        <header className="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/50 backdrop-blur-md px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between shrink-0">
-          <div className="flex items-center space-x-2.5">
-            {/* Mobile hamburger */}
-            <button
-              onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-              className="lg:hidden p-1.5 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-lg transition-all cursor-pointer"
-              title="Toggle Sidebar"
+        {/* Top Navigation */}
+        <nav className={`h-16 px-4 md:px-6 flex items-center justify-between border-b ${darkMode ? 'bg-[#0A0A0A] border-white/10' : 'bg-white border-gray-100'}`}>
+          <div className="flex items-center space-x-3">
+            <button 
+              className="md:hidden p-2 -ml-2 rounded-lg opacity-70 hover:opacity-100"
+              onClick={() => setIsMobileSidebarOpen(true)}
             >
-              {isMobileSidebarOpen ? <X className="w-4.5 h-4.5" /> : <Menu className="w-4.5 h-4.5" />}
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
-
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-indigo-650 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
-              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse" />
-            </div>
-            <div>
-              <h1 className="text-xs sm:text-sm font-black tracking-tight text-slate-850 dark:text-slate-50 uppercase">ResumeAI</h1>
-              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 uppercase tracking-widest leading-none hidden sm:block">SaaS Optimizer</p>
+            <div className="font-bold text-xl tracking-tight hidden md:block">
+              ResumeAI
             </div>
           </div>
-
-          <div className="flex items-center space-x-2 sm:space-x-4">
-            {/* Credits Counter / Plan Badge */}
-            <div className="flex items-center space-x-1.5 sm:space-x-2">
-              {isPro ? (
-                <span className="px-2 sm:px-2.5 py-1 text-[8px] sm:text-[9px] font-black text-indigo-700 dark:text-indigo-350 bg-indigo-500/10 rounded-lg uppercase tracking-wider flex items-center gap-1 animate-pulse">
-                  <Sparkles className="w-3 h-3 fill-current" />
-                  <span className="hidden sm:inline">Pro Plan</span>
-                  <span className="sm:hidden">Pro</span>
-                </span>
-              ) : (
-                <div className="flex items-center space-x-1.5 sm:space-x-2">
-                  <span className="text-[9px] sm:text-[10px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:inline">
-                    Credits: <strong className="text-slate-600 dark:text-slate-350">{credits}/1 Free</strong>
-                  </span>
-                  <button
-                    onClick={() => setIsPricingOpen(true)}
-                    className="px-2 sm:px-2.5 py-1 text-[8px] sm:text-[9px] font-black text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg uppercase tracking-wider cursor-pointer transition-colors shadow-sm"
-                  >
-                    Upgrade
-                  </button>
-                </div>
-              )}
+          
+          <div className="flex items-center space-x-4 md:space-x-6">
+            <div className={`hidden md:flex flex-col items-end text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span>Welcome, {user.name}</span>
+              <span className="font-medium text-indigo-500">
+                {isPro ? 'Pro Member' : `Free Optimizations: ${credits} / 5`}
+              </span>
             </div>
-
-            <span className="h-4 w-px bg-slate-200 dark:bg-slate-850 hidden sm:block" />
-
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="p-1.5 sm:p-2 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-xl transition-all cursor-pointer"
-              title="Toggle Theme"
+            
+            <button 
+              onClick={logout}
+              className={`p-2 rounded-full transition-colors ${darkMode ? 'bg-white/5 hover:bg-white/10 text-white/70 hover:text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
+              title="Log Out"
             >
-              {darkMode ? <Sun className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-amber-500" /> : <Moon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />}
+              <LogOut size={18} />
             </button>
-            <span className="h-4 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
-            <div className="hidden sm:flex items-center space-x-1.5 text-xxs font-bold uppercase tracking-wider text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              <span>Production API Active</span>
-            </div>
           </div>
-        </header>
+        </nav>
 
         {/* Global Progress Bar for AI Processing */}
         {isProcessing && (

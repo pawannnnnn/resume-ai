@@ -1,4 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
+from sqlalchemy.orm import Session
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import io
@@ -8,6 +9,9 @@ from services.resume_parser import ResumeParser
 from services.ai_service import AIService
 from services.pdf_generator import PDFGenerator
 from utils.logger import logger
+from db.database import get_db
+from db.models import User
+from dependencies import get_current_user, verify_quota
 
 router = APIRouter(prefix="/api", tags=["Resume"])
 
@@ -57,7 +61,7 @@ class ExportRequest(BaseModel):
 # ----------------------------------------------------
 
 @router.post("/scrape", response_model=ScrapeResponse)
-def scrape_job(request: ScrapeRequest):
+def scrape_job(request: ScrapeRequest, current_user: User = Depends(get_current_user)):
     try:
         data = job_scraper.scrape_job_description(request.url)
         return data
@@ -75,7 +79,7 @@ def scrape_job(request: ScrapeRequest):
         )
 
 @router.post("/parse", response_model=ParseResponse)
-def parse_resume(file: UploadFile = File(...)):
+def parse_resume(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     try:
         content = file.file.read()
         logger.info(f"Received file upload: {file.filename} ({len(content)} bytes)")
@@ -91,7 +95,7 @@ def parse_resume(file: UploadFile = File(...)):
         )
 
 @router.post("/analyze")
-def analyze_resume(request: AnalyzeRequest):
+def analyze_resume(request: AnalyzeRequest, current_user: User = Depends(get_current_user)):
     try:
         analysis = ai_service.analyze_resume(request.resume_text, request.job_description)
         return analysis
@@ -105,9 +109,19 @@ def analyze_resume(request: AnalyzeRequest):
         )
 
 @router.post("/optimize")
-def optimize_resume(request: OptimizeRequest):
+def optimize_resume(
+    request: OptimizeRequest, 
+    current_user: User = Depends(verify_quota),
+    db: Session = Depends(get_db)
+):
     try:
         optimized = ai_service.optimize_resume(request.resume_text, request.job_description, request.settings)
+        
+        # Decrement quota / Increment used
+        if current_user.subscription_type != "pro":
+            current_user.resume_optimizations_used += 1
+            db.commit()
+            
         return optimized
     except ValueError as val_err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(val_err))
@@ -119,7 +133,7 @@ def optimize_resume(request: OptimizeRequest):
         )
 
 @router.post("/suggestions")
-def generate_suggestions(request: SuggestionsRequest):
+def generate_suggestions(request: SuggestionsRequest, current_user: User = Depends(get_current_user)):
     try:
         suggestions = ai_service.generate_suggestions(request.resume_text, request.job_description)
         return suggestions
@@ -133,7 +147,7 @@ def generate_suggestions(request: SuggestionsRequest):
         )
 
 @router.post("/export")
-def export_document(request: ExportRequest):
+def export_document(request: ExportRequest, current_user: User = Depends(get_current_user)):
     try:
         fmt = request.format.lower()
         if fmt == "tex":

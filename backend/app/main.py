@@ -8,10 +8,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from routes.resume import router
+from routes.auth import router as auth_router
+from routes.admin import router as admin_router
 from config import settings
 from utils.logger import logger
 from services.ai.provider_factory import ProviderFactory
-
+from db.database import engine, Base
 
 # ---------------------------------------------------------------------------
 # Lifespan — startup & shutdown hooks
@@ -19,6 +21,8 @@ from services.ai.provider_factory import ProviderFactory
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"ResumeAI API starting (environment={settings.ENVIRONMENT})")
+    # Initialize database tables
+    Base.metadata.create_all(bind=engine)
     yield
     # Cleanup on shutdown
     ProviderFactory.close()
@@ -99,7 +103,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Routes
 # ---------------------------------------------------------------------------
 app.include_router(router)
-
+app.include_router(auth_router)
+app.include_router(admin_router)
 
 @app.get("/")
 def home():

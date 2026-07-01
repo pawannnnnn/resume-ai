@@ -338,8 +338,13 @@ export default function Home() {
     } catch (e: any) {
       showToast(e.message || 'AI processing encountered an error.', 'error');
     } finally {
-      setTimeout(() => setIsProcessing(false), 800);
+      setIsProcessing(false);
     }
+  };
+
+  const handleUpgrade = (planName: string) => {
+    setIsPricingOpen(false);
+    showToast('Upgrading requires payment integration. Contact the administrator.', 'info');
   };
 
   // Step 4: Export PDF/DOCX/LaTeX

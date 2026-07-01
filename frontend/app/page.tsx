@@ -468,6 +468,22 @@ export default function Home() {
   if (!user) {
     return (
       <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${darkMode ? 'bg-[#0A0A0A] text-white' : 'bg-gray-50 text-gray-900'}`}>
+        {/* Toast Notification Container */}
+        <div className="fixed top-5 right-3 sm:right-5 z-50 space-y-2 pointer-events-none w-[calc(100vw-1.5rem)] sm:w-auto">
+          {toasts.map((t) => (
+            <div key={t.id} className={`flex items-center space-x-2.5 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border shadow-lg text-[11px] sm:text-xs font-semibold max-w-sm pointer-events-auto animate-in slide-in-from-right-5 duration-200 ${
+              t.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-250 dark:bg-emerald-950/20 dark:text-emerald-350 dark:border-emerald-900' : 
+              t.type === 'error' ? 'bg-rose-50 text-rose-800 border-rose-250 dark:bg-rose-950/20 dark:text-rose-350 dark:border-rose-900' : 
+              'bg-indigo-50 text-indigo-800 border-indigo-250 dark:bg-indigo-950/20 dark:text-indigo-350 dark:border-indigo-900'
+            }`}>
+              {t.type === 'success' && <CheckCircle className="w-4.5 h-4.5 text-emerald-500 shrink-0" />}
+              {t.type === 'error' && <AlertTriangle className="w-4.5 h-4.5 text-rose-500 shrink-0" />}
+              {t.type === 'info' && <Sparkles className="w-4.5 h-4.5 text-indigo-500 shrink-0" />}
+              <span>{t.message}</span>
+            </div>
+          ))}
+        </div>
+
         <div className={`max-w-md w-full p-8 rounded-2xl shadow-xl ${darkMode ? 'bg-[#141414] border border-white/10' : 'bg-white border border-gray-100'}`}>
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold mb-2">ResumeAI</h1>
@@ -477,7 +493,7 @@ export default function Home() {
             <GoogleLogin
               onSuccess={credentialResponse => {
                 if (credentialResponse.credential) {
-                  login(credentialResponse.credential).catch(err => showToast('Login failed', 'error'));
+                  login(credentialResponse.credential).catch(err => showToast('Login failed: ' + err.message, 'error'));
                 }
               }}
               onError={() => {

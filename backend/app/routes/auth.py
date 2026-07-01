@@ -69,7 +69,7 @@ def google_login(request: GoogleLoginRequest, db: Session = Depends(get_db)):
         # Generate our own JWT access token for session management
         access_token_expires = timedelta(days=7) # Persist login for 7 days
         access_token = create_access_token(
-            data={"sub": user.id}, 
+            data={"sub": str(user.id)}, 
             expires_delta=access_token_expires
         )
 

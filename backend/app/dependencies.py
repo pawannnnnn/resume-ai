@@ -24,9 +24,10 @@ def get_current_user(
     try:
         # Decode the JWT token issued by our backend
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
-        user_id: int = payload.get("sub")
-        if user_id is None:
+        sub = payload.get("sub")
+        if sub is None:
             raise credentials_exception
+        user_id = int(sub)
     except jwt.PyJWTError:
         raise credentials_exception
         

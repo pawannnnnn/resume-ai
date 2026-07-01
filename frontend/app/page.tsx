@@ -57,7 +57,7 @@ interface Toast {
 
 // API base URL — reads from environment variable set on Vercel
 // Falls back to localhost:8000 for local development
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 
 export default function Home() {
   // Theme state

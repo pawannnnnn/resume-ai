@@ -48,7 +48,8 @@ origins = [
 
 # Add the deployed frontend URL if configured
 if settings.FRONTEND_URL:
-    origins.append(settings.FRONTEND_URL)
+    frontend_url = settings.FRONTEND_URL.rstrip('/')
+    origins.append(frontend_url)
 
 app.add_middleware(
     CORSMiddleware,
